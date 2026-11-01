@@ -1,11 +1,14 @@
 import type { BrowserContext } from '@playwright/test';
 
-const HOST = 'aiblqa.app.ababilng.com';
-
-// The server answers with redirects to http://aiblqa... (port 80 is unreachable).
-// This rewrites any such Location header to https before the browser sees it.
+/**
+ * The server redirects login to http://<host>/login, but port 80 is unreachable.
+ * This rewrites any http redirect to https before the browser follows it.
+ * The host comes from BASE_URL in .env.
+ */
 export async function forceHttps(context: BrowserContext) {
-  await context.route(`https://${HOST}/**`, async (route) => {
+  const host = new URL(process.env.BASE_URL!).hostname;
+
+  await context.route(`https://${host}/**`, async (route) => {
     try {
       const response = await route.fetch({ maxRedirects: 0 });
       const headers = response.headers();
@@ -18,8 +21,7 @@ export async function forceHttps(context: BrowserContext) {
     }
   });
 
-  // safety net if anything still goes to plain http
-  await context.route(`http://${HOST}/**`, (route) =>
+  await context.route(`http://${host}/**`, (route) =>
     route.fulfill({
       status: 301,
       headers: { location: route.request().url().replace(/^http:\/\//i, 'https://') },

@@ -1,17 +1,16 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
+import { DASHBOARD_URL } from './helpers';
 
 /**
  * Customer Information File (CIF) form tests.
  *
- * Set the form URL before running:
- *   Command Prompt:  set "CIF_URL=https://aiblqa.app.ababilng.com/ci/#/YOUR-CIF-PATH"
- * Find the path with:  npx playwright codegen --load-storage=auth.json https://aiblqa.app.ababilng.com/ci/
- *
- * Selectors are based on the form labels. If one fails, check it in
- * codegen and adjust it in one place (the helpers below).
+ * Tell the test how to reach the form, in .env:
+ *   CIF_URL=https://.../ci/#/your-cif-path        (direct address), or
+ *   CIF_MENU=Customer Information > Customer Information File    (menu clicks, in order)
  */
 const CIF_URL = process.env.CIF_URL;
+const CIF_MENU = process.env.CIF_MENU;
 
 // ---------- helpers ----------
 const field = (page: Page, label: string | RegExp) => page.getByLabel(label).first();
@@ -22,15 +21,24 @@ async function pick(page: Page, label: RegExp, option?: string | RegExp) {
   await (option ? opts.filter({ hasText: option }).first() : opts.first()).click();
 }
 
-async function submit(page: Page) {
-  await page.getByRole('button', { name: /submit/i }).click();
+const submit = (page: Page) => page.getByRole('button', { name: /submit/i }).click();
+
+async function openCif(page: Page) {
+  if (CIF_URL) {
+    await page.goto(CIF_URL);
+    return;
+  }
+  await page.goto(DASHBOARD_URL);
+  for (const step of CIF_MENU!.split('>').map((s) => s.trim()).filter(Boolean)) {
+    await page.getByText(step).first().click();
+  }
 }
 
 test.describe('CIF form', () => {
-  test.skip(!CIF_URL, 'Set CIF_URL environment variable to the CIF form address');
+  test.skip(!CIF_URL && !CIF_MENU, 'Set CIF_URL or CIF_MENU in .env');
 
   test.beforeEach(async ({ page }) => {
-    await page.goto(CIF_URL!);
+    await openCif(page);
     await expect(page.getByText('Customer Information').first()).toBeVisible();
   });
 
@@ -54,8 +62,8 @@ test.describe('CIF form', () => {
 
   // ---------- mobile number ----------
   const mobileCases = [
-    { value: '01712345678', valid: true,  note: 'valid 11-digit number' },
-    { value: '123',         valid: false, note: 'too short' },
+    { value: '01712345678', valid: true, note: 'valid 11-digit number' },
+    { value: '123', valid: false, note: 'too short' },
     { value: 'abcdefghijk', valid: false, note: 'letters only' },
     { value: '0171234567890123', valid: false, note: 'too long' },
   ];
@@ -74,8 +82,8 @@ test.describe('CIF form', () => {
   // ---------- email ----------
   const emailCases = [
     { value: 'user@example.com', valid: true },
-    { value: 'user@',            valid: false },
-    { value: 'not-an-email',     valid: false },
+    { value: 'user@', valid: false },
+    { value: 'not-an-email', valid: false },
   ];
   for (const c of emailCases) {
     test(`email "${c.value}" is ${c.valid ? 'accepted' : 'rejected'}`, async ({ page }) => {
@@ -118,7 +126,6 @@ test.describe('CIF form', () => {
     const district = page.getByRole('combobox', { name: /District/ });
     await expect(district).not.toContainText('Select one');
 
-    // choose a different division (second option)
     await page.getByRole('combobox', { name: /Division/ }).click();
     await page.getByRole('option').nth(1).click();
     await expect(district).toContainText('Select one');
@@ -140,8 +147,7 @@ test.describe('CIF form', () => {
   });
 
   // ---------- successful submit ----------
-  // Creates a real record in QA. Remove .skip when you are ready to test it,
-  // and update the API URL pattern to match your backend.
+  // Creates a real record in QA. Remove .skip when ready and update the API URL pattern.
   test.skip('valid form submits successfully', async ({ page }) => {
     const unique = Date.now().toString().slice(-8);
 
